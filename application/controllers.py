@@ -269,3 +269,222 @@ def admin_view_history(patient_id):
         patient=patient,
         treatments=treatments
     )    
+    
+@app.route("/doctor_dashboard")
+def doctor_dashboard():
+    if session.get("role") != "doctor" or "user_id" not in session:
+        return redirect(url_for("login"))
+
+    doctor = Doctor.query.get(session["user_id"])
+    today = date.today()
+    start_of_week = today - timedelta(days=today.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
+
+    weekly_appointments = Appointment.query.filter(
+        Appointment.doctor_id == doctor.id,
+        Appointment.date >= start_of_week,
+        Appointment.date <= end_of_week,
+        Appointment.status.in_(["Booked", "Confirmed"]) 
+    ).order_by(Appointment.date, Appointment.time).all()
+
+    for appt in weekly_appointments:
+        appt.has_treatment = Treatment.query.filter_by(appointment_id=appt.id).first() is not None
+
+    assigned_patients = Patient.query\
+        .join(Treatment, Treatment.patient_id == Patient.id)\
+        .join(Appointment, Appointment.id == Treatment.appointment_id)\
+        .filter(
+            Appointment.doctor_id == doctor.id,
+            Appointment.status == "Completed" 
+        ).distinct().all()
+
+    return render_template(
+        "doctor_dashboard.html",
+        doctor=doctor,
+        appointments=weekly_appointments,
+        patients=assigned_patients
+    )
+
+
+@app.route("/appointment/<int:id>/complete", methods=["POST"])
+def mark_completed(id):
+    appt = Appointment.query.get_or_404(id)
+
+    if session.get("role") != "doctor" or appt.doctor_id != session["user_id"]:
+        flash("Unauthorized action!", "danger")
+        return redirect(url_for("doctor_dashboard"))
+
+    if appt.status not in ["Booked", "Confirmed"]:
+        flash("This appointment cannot be completed.", "warning")
+        return redirect(url_for("doctor_dashboard"))
+
+    slot = DoctorAvailability.query.filter_by(
+        doctor_id=appt.doctor_id,
+        date=appt.date,
+        time=appt.time
+    ).first()
+
+    if slot:
+        slot.status = "available"
+    
+    appt.status = "Completed"
+
+    try:
+        db.session.commit()
+        flash(f"Appointment completed! Slot is now available for new bookings.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash("Error completing appointment.", "danger")
+        print("ERROR:", e)
+
+    return redirect(url_for("doctor_dashboard"))
+
+
+@app.route("/cancel_appointment/<int:appt_id>", methods=["POST"])
+def cancel_appointment(appt_id):
+    if 'user_id' not in session:
+        flash("Please login first!", "danger")
+        return redirect(url_for("login"))
+
+    appt = Appointment.query.get_or_404(appt_id)
+
+    user_role = session.get('role')
+    user_id = session['user_id']
+
+    if user_role == 'patient' and appt.patient_id != user_id:
+        flash("You can only cancel your own appointments!", "danger")
+        return redirect(url_for("patient_dashboard"))
+
+    if user_role == 'doctor' and appt.doctor_id != user_id:
+        flash("You can only cancel your own appointments!", "danger")
+        return redirect(url_for("doctor_dashboard"))
+
+    if user_role not in ['patient', 'doctor']:
+        flash("Unauthorized!", "danger")
+        return redirect(url_for("login"))
+
+    slot = DoctorAvailability.query.filter_by(
+        doctor_id=appt.doctor_id,
+        date=appt.date,
+        time=appt.time
+    ).first()
+
+    if slot:
+        slot.status = "available" 
+
+    db.session.delete(appt)
+    db.session.commit()
+
+    flash("Appointment cancelled successfully! Slot is now available for booking.", "success")
+
+    if user_role == 'patient':
+        return redirect(url_for("patient_dashboard"))
+    else:
+        return redirect(url_for("doctor_dashboard"))
+    
+    
+@app.route("/appointment/<int:id>/cancel", methods= ["POST"])
+def mark_cancelled(id):
+    appt = Appointment.query.get(id)
+    if appt.status == "Booked":
+        appt.status = "Cancelled"
+    db.session.commit()
+    return redirect("/doctor_dashboard") 
+
+
+@app.route("/update_patient_history/<int:appointment_id>", methods=["GET", "POST"])
+def update_patient_history(appointment_id):
+    appointment = Appointment.query.get_or_404(appointment_id)
+    patient = Patient.query.get(appointment.patient_id)
+    doctor = Doctor.query.get(appointment.doctor_id)
+
+    if request.method == "POST":
+        diagnosis = request.form["diagnosis"]
+        prescription = request.form["prescription"]
+        notes = request.form["notes"]
+
+        existing_treatment = Treatment.query.filter_by(appointment_id=appointment.id).first()
+        if not existing_treatment:
+            treatment = Treatment(
+                date=appointment.date,
+                time=appointment.time,
+                diagnosis=diagnosis,
+                prescription=prescription,
+                notes=notes,
+                appointment_id=appointment.id,
+                patient_id=patient.id,
+                doctor_id=appointment.doctor_id
+            )
+            db.session.add(treatment)
+            db.session.commit() 
+
+            flash("Treatment saved successfully! Now mark as complete when done.", "success")
+        else:
+            flash("Treatment already exists!", "info")
+
+        return redirect(url_for("doctor_dashboard"))
+    return render_template("update_patient_history.html", 
+                         patient=patient, 
+                         appointment=appointment, 
+                         doctor=doctor)
+
+
+@app.route("/update/<int:doctor_id>/doctor/availability", methods=["GET", "POST"])
+def update_doctor_availability(doctor_id):
+
+    if request.method == "POST":
+        selected_slots = []
+
+        DoctorAvailability.query.filter_by(doctor_id=doctor_id).delete()
+        
+        for key, value in request.form.items():
+          selected_slots.append(value)
+
+        for item in selected_slots:
+            date_str, time = item.split("|")  
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+
+            new_slot = DoctorAvailability(
+                doctor_id=doctor_id,
+                date=date_obj,
+                time=time,
+                status="available"
+            )
+            db.session.add(new_slot)
+
+        db.session.commit()
+
+        return redirect(url_for("doctor_dashboard", doctor_id=doctor_id))
+
+    today = datetime.today()
+    seven_days = [today + timedelta(days=i) for i in range(7)]
+
+    saved = DoctorAvailability.query.filter_by(doctor_id=doctor_id).all()
+    saved_set = set([f"{a.date}|{a.time}" for a in saved])
+
+    return render_template(
+        "update_doctor_availability.html",
+        doctor_id=doctor_id,
+        seven_days=seven_days,
+        saved_set=saved_set
+    )
+
+
+@app.route("/view_patient_history/<int:patient_id>/<int:doctor_id>")
+def view_patient_history(patient_id, doctor_id):
+    patient = Patient.query.get(patient_id)
+    appointment = Appointment.query.filter_by(patient_id=patient_id).order_by(Appointment.date.desc(), Appointment.time.desc()).first()
+    doctor = Doctor.query.get(appointment.doctor_id)
+    treatments = Treatment.query.join(Appointment).filter(Appointment.patient_id == patient_id, Appointment.doctor_id == doctor_id).order_by(Appointment.date.desc(), Appointment.time.desc()).all()
+    return render_template("view_patient_history.html", patient=patient, treatments=treatments, doctor=doctor)
+
+
+@app.template_filter('format_time')
+def format_time(time_str):
+    if not time_str:
+        return "N/A"
+    try:
+        t = datetime.strptime(time_str, "%H:%M")
+        return t.strftime("%I:%M %p") 
+    except:
+        return time_str
