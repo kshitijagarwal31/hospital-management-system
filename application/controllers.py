@@ -270,6 +270,177 @@ def admin_view_history(patient_id):
         treatments=treatments
     )    
     
+    
+@app.route("/patient_dashboard")
+def patient_dashboard():
+    if session.get("role") != "patient":
+        flash("Please login as patient", "danger")
+        return redirect(url_for("login"))
+
+    patient_id = session["user_id"]
+    patient = Patient.query.get_or_404(patient_id)
+
+    appointments = Appointment.query.filter(
+        Appointment.patient_id == patient_id,
+        Appointment.date >= date.today(),
+        Appointment.status.in_(["Booked", "Confirmed"])
+    ).order_by(Appointment.date.asc(), Appointment.time.asc()).all()
+
+    departments = Department.query.all()
+    active_doctors = Doctor.query.filter_by(is_active=True).all()
+
+    return render_template(
+        "patient_dashboard.html",
+        patient=patient,
+        appointments=appointments,
+        departments=departments,
+        doctors=active_doctors
+    )
+
+
+@app.route("/patient_history")
+def patient_history():
+    patient_id = session['user_id']
+    patient = Patient.query.get_or_404(patient_id)
+
+    treatments = (Treatment.query
+                  .filter_by(patient_id=patient_id)
+                  .order_by(Treatment.date.desc(), Treatment.time.desc())
+                  .all())
+    doctor = None
+    if treatments:
+        doctor = Doctor.query.get(treatments[0].doctor_id)
+    return render_template("patient_history.html",
+                           patient=patient,
+                           doctor=doctor,        
+                           treatments=treatments)
+
+
+@app.route('/doctors/<dept>')
+def doctors_department(dept):
+    department_name = dept.replace('_', ' ').title()
+    
+    department_obj = Department.query.filter(
+        Department.name.ilike(department_name)
+    ).first_or_404()
+    
+    doctors = [
+        doc for doc in Doctor.query.all() 
+        if doc.department and doc.department.strip().lower() == department_name.lower()
+    ]
+    overview = department_obj.overview or "No description available for this department."
+    return render_template('doctors_department.html',
+                         doctors=doctors,
+                         department_name=department_name,
+                         overview=overview)
+
+
+@app.route("/patient/availability/<int:doctor_id>", methods=["GET", "POST"])
+def patient_view_doctor_availability(doctor_id):
+    if session.get("role") != "patient":
+        flash("Please login as patient", "danger")
+        return redirect(url_for("login"))
+
+    doctor = Doctor.query.get_or_404(doctor_id)
+
+    if not doctor.is_active:
+        flash("This doctor is currently unavailable for booking.", "warning")
+        return redirect(url_for("patient_dashboard"))
+
+    today = date.today()
+    seven_days = [today + timedelta(days=i) for i in range(7)]
+
+    if request.method == "POST":
+        slot_value = request.form.get("slot")
+        if not slot_value:
+            flash("Please select a time slot!", "danger")
+            return redirect(request.url)
+
+        try:
+            date_str, time_str = slot_value.split("|")
+            selected_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            selected_time = time_str.strip()
+
+            slot = DoctorAvailability.query.filter_by(
+                doctor_id=doctor_id,
+                date=selected_date,
+                time=selected_time,
+                status="available"
+            ).with_for_update().first()
+
+            if not slot:
+                flash("Sorry, this slot was just booked by someone else!", "danger")
+                return redirect(request.url)
+
+            slot.status = "booked"
+            appointment = Appointment(
+                patient_id=session["user_id"],
+                doctor_id=doctor_id,
+                date=selected_date,
+                time=selected_time,
+                status="Booked",
+                department=doctor.department
+            )
+            db.session.add(appointment)
+            db.session.commit()
+
+            flash(f"Appointment booked successfully on {selected_date.strftime('%d %B %Y')} at {format_time(selected_time)}!", "success")
+            return redirect(url_for("patient_dashboard"))
+
+        except Exception as e:
+            db.session.rollback()
+            flash("Booking failed. Please try again.", "danger")
+            print("BOOKING ERROR:", e)
+            return redirect(request.url)
+
+    all_slots = DoctorAvailability.query.filter(
+        DoctorAvailability.doctor_id == doctor_id,
+        DoctorAvailability.date.in_(seven_days)
+    ).order_by(DoctorAvailability.date, DoctorAvailability.time).all()
+
+    slots_by_date = {}
+    for day in seven_days:
+        day_str = day.strftime("%Y-%m-%d")
+        slots_by_date[day_str] = [s for s in all_slots if s.date.strftime("%Y-%m-%d") == day_str]
+
+    return render_template(
+        "patient_view_doctor_availability.html",
+        doctor=doctor,
+        seven_days=seven_days,
+        slots_by_date=slots_by_date,
+        format_time=format_time
+    )
+
+
+@app.route('/doctor/<username>')
+def doctor_profile(username):
+    if session.get("role") != "patient":
+        flash("Please login as patient.", "danger")
+        return redirect(url_for("login"))
+
+    doctor = Doctor.query.filter_by(username=username).first()
+
+    if not doctor:
+        flash("Doctor not found.", "danger")
+        return redirect(url_for("patient_dashboard"))
+    return render_template('doctor_profile.html', doctor=doctor)
+
+
+@app.route("/edit_patient_profile/<int:patient_id>", methods = ["GET", "POST"])
+def edit_patient_profile(patient_id):
+    patient = Patient.query.get(patient_id)
+    if request.method == "POST":
+        patient.username = request.form["username"]
+        patient.name = request.form["name"]
+        patient.email = request.form["email"]
+        patient.phonenumber = request.form["phonenumber"]
+        if request.form["password"]:
+            patient.password = generate_password_hash(request.form["password"])
+        db.session.commit()
+        return redirect(url_for("patient_dashboard"))
+    return render_template("edit_patient_profile.html", patient=patient, patient_id = patient_id)
+    
+    
 @app.route("/doctor_dashboard")
 def doctor_dashboard():
     if session.get("role") != "doctor" or "user_id" not in session:
