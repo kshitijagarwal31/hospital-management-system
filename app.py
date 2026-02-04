@@ -15,6 +15,7 @@ def create_app():
 
 
 app = create_app()
+from application.controllers import * 
 
 with app.app_context():
     db.create_all()
