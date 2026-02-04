@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Patient History | Hospital Management System</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    body {
+      background-color: #f4f6f9;
+      font-family: Arial, sans-serif;
+      min-height: 100vh;
+    }
+    .custom-navbar {
+      background-color: #2c3e50;
+      padding: 1rem 0;
+    }
+    .navbar-brand {
+      font-weight: bold;
+      font-size: 1.4rem;
+      color: white !important;
+    }
+    .nav-link {
+      color: #ddd !important;
+      font-weight: 700;
+    }
+    .nav-link:hover, .nav-link.active {
+      color: white !important;
+    }
+    .container-main {
+      max-width: 1000px;
+      margin: 50px auto;
+    }
+    .card {
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      background: white;
+    }
+    .card-header {
+      background-color: #2c3e50;
+      color: white;
+      padding: 20px;
+      text-align: center;
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+    .info-text {
+      font-size: 1.1rem;
+      color: #444;
+      margin-bottom: 10px;
+    }
+    .info-text strong {
+      color: #2c3e50;
+    }
+    .table th {
+      background-color: #2c3e50;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="navbar navbar-expand-lg custom-navbar">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="{{ url_for('home') }}">Hospital Management System</a>
+      <div class="collapse navbar-collapse">
+        <div class="navbar-nav ms-auto">
+          <a class="nav-link" href="{{ url_for('doctor_dashboard') }}">Doctor Dashboard</a>
+          <a class="nav-link active fw-bold">Patient History</a>
+          <a class="nav-link text-danger fw-bold" href="{{ url_for('home') }}">Logout</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+  </div>
+
+  <div class="container container-main">
+    <div class="card">
+      <div class="card-header">
+        Patient Treatment History
+      </div>
+      <div class="card-body">
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h5 class="mb-0"><strong>Patient Name:</strong> {{ patient.name }}</h5>
+          <a href="{{ url_for('doctor_dashboard') }}" class="btn btn-outline-primary">Back to Dashboard</a>
+        </div>
+
+
+        <hr>
+
+        <div class="table-responsive mt-4">
+          <table class="table table-striped table-bordered text-center">
+            <thead>
+              <tr>
+                <th>S.No</th>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Doctor</th>
+                <th>Department</th>
+                <th>Diagnosis</th>
+                <th>Prescription</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for t in treatments %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ t.date.strftime("%d-%m-%Y") }}</td>
+                <td>{{ t.time or "-" }}</td>
+                <td>{{ t.appointment.doctor.fullname }}</td>
+                <td>{{ t.appointment.doctor.department }}</td>
+                <td>{{ t.diagnosis or "-" }}</td>
+                <td>{{ t.prescription or "-" }}</td>
+                <td>{{ t.notes or "-" }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="6" class="text-center text-muted py-4">No treatment history found.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
