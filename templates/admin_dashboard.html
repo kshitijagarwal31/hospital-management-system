@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Dashboard | Hospital Management System</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    body {
+      background-color: #f4f6f9;
+      font-family: Arial, sans-serif;
+      min-height: 100vh;
+    }
+
+    .custom-navbar {
+      background-color: #2c3e50;
+      padding: 1rem 0;
+    }
+
+    .navbar-brand {
+      font-weight: bold;
+      font-size: 1.4rem;
+      color: white !important;
+    }
+
+    .nav-link {
+      color: #ddd !important;
+      font-weight: 700;
+    }
+
+    .nav-link:hover,
+    .nav-link.active {
+      color: white !important;
+    }
+
+    .dashboard-container {
+      max-width: 1100px;
+      margin: 40px auto;
+      padding: 30px;
+      background-color: #fff;
+      border-radius: 14px;
+      box-shadow: 0 5px 18px rgba(0, 0, 0, 0.1);
+    }
+
+    .section-title {
+      font-weight: 600;
+      color: #2c3e50;
+      margin-bottom: 15px;
+      font-size: 1.3rem;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .btn-sm {
+      font-size: 0.85rem;
+      padding: 5px 12px;
+    }
+
+    .table {
+      font-size: 0.95rem;
+    }
+
+    .table th {
+      background-color: #2c3e50;
+      color: white;
+    }
+
+    .table td,
+    .table th {
+      padding: 10px 12px;
+      white-space: nowrap;
+    }
+
+    .input-group .form-control,
+    .input-group .btn {
+      height: 48px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <nav class="navbar navbar-expand-lg custom-navbar">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="{{ url_for('home') }}">Hospital Management System</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavAltMarkup">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
+        <div class="navbar-nav ms-auto">
+          <a class="nav-link active fw-bold">Admin Dashboard</a>
+          <a class="nav-link text-danger fw-bold" href="{{ url_for('home') }}">Logout</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="container mt-4">
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+      {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <div class="dashboard-container">
+    <h4 class="text-center mb-4">Welcome Admin</h4>
+
+    <form method="GET" action="{{ url_for('search_doctor_patient') }}" class="input-group search-bar mb-4">
+      <input type="text" name="query" class="form-control" placeholder="Search doctor, patient department...">
+      <button type="submit" class="btn btn-dark">Search</button>
+    </form>
+
+    <div class="section-header">
+      <h5 class="section-title">Registered Doctors</h5>
+      <div>
+        <a href="{{ url_for('add_department') }}" class="btn btn-primary me-2">
+          + Add Department
+        </a>
+        <a href="{{ url_for('add_doctor') }}" class="btn btn-success">Create Doctor</a>
+      </div>
+    </div>
+
+    <ul class="list-group mb-4">
+      {% for doc in doctors %}
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        Dr. {{ doc.fullname }}
+        <div class="action-btns">
+          <a href="{{ url_for('edit_doctor', doctor_id=doc.id) }}" class="btn btn-sm btn-warning">Edit</a>
+          <form action="{{ url_for('delete_doctor', doctor_id=doc.id) }}" method="post" style="display:inline;"
+            onsubmit="return confirm('Are you sure you want to delete Dr. {{ doc.fullname }}?');">
+            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+          </form>
+          <form method="POST" action="{{ url_for('toggle_blacklist_doctor', doctor_id=doc.id) }}"
+            style="display:inline;">
+            {% if doc.is_active %}
+            <button class="btn btn-sm btn-secondary"
+              onclick="return confirm('Blacklist this doctor?');">Blacklist</button>
+            {% else %}
+            <button class="btn btn-sm btn-success" onclick="return confirm('Remove from blacklist?');">Unblock</button>
+            {% endif %}
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <div class="section-header">
+      <h5 class="section-title">Registered Patients</h5>
+    </div>
+
+    <ul class="list-group mb-4">
+      {% for pat in patients %}
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        {{ pat.name }}
+        <div class="action-btns">
+          <a href="{{ url_for('edit_patient', patient_id=pat.id) }}" class="btn btn-sm btn-warning">Edit</a>
+          <form action="{{ url_for('delete_patient', patient_id=pat.id) }}" method="post" style="display:inline;"
+            onsubmit="return confirm('Delete {{ pat.name }}?');">
+            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+          </form>
+          <form method="POST" action="{{ url_for('toggle_blacklist_patient', patient_id=pat.id) }}"
+            style="display:inline;">
+            {% if pat.is_active %}
+            <button class="btn btn-sm btn-secondary" onclick="return confirm('Blacklist patient?');">Blacklist</button>
+            {% else %}
+            <button class="btn btn-sm btn-success" onclick="return confirm('Unblock patient?');">Unblock</button>
+            {% endif %}
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <h5 class="section-title">Upcoming Appointments</h5>
+    <div class="table-responsive mb-4">
+      <table class="table table-bordered table-striped">
+        <thead class="table-dark">
+          <tr>
+            <th>Sr No.</th>
+            <th>Patient Name</th>
+            <th>Doctor Name</th>
+            <th>Department</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>History</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for appt in upcoming %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ appt.patient.name }}</td>
+            <td>Dr. {{ appt.doctor.fullname }}</td>
+            <td>{{ appt.department }}</td>
+            <td>{{ appt.date.strftime("%d-%b-%Y") }}</td>
+            <td>{% if appt.time.__class__.__name__ == "time" %}{{ appt.time.strftime("%I:%M %p") }}{% else %}{{
+              appt.time }}{% endif %}</td>
+            <td><a href="{{ url_for('admin_view_history', patient_id=appt.patient.id) }}"
+                class="btn btn-info btn-sm">View</a></td>
+          </tr>
+          {% else %}
+          <tr> 
+            <td colspan="7" class="text-center text-muted">No upcoming appointments</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h5 class="section-title">Past Appointments</h5>
+    <div class="table-responsive mb-5">
+      <table class="table table-bordered table-striped">
+        <thead class="table-dark">
+          <tr>
+            <th>Sr No.</th>
+            <th>Patient Name</th>
+            <th>Doctor Name</th>
+            <th>Department</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>History</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for appt in past %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ appt.patient.name }}</td>
+            <td>Dr. {{ appt.doctor.fullname }}</td>
+            <td>{{ appt.department }}</td>
+            <td>{{ appt.date.strftime("%d-%b-%Y") }}</td>
+            <td>{% if appt.time.__class__.__name__ == "time" %}{{ appt.time.strftime("%I:%M %p") }}{% else %}{{
+              appt.time }}{% endif %}</td>
+            <td><a href="{{ url_for('admin_view_history', patient_id=appt.patient.id) }}"
+                class="btn btn-info btn-sm">View</a></td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="text-center text-muted">No past appointments</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div> 
+
+</body>
+
+</html>
