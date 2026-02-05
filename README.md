@@ -95,8 +95,8 @@ hospital-management-system/
 │
 ├── templates/             # Jinja2 HTML templates
 │
-├── .gitignore
-├── app.py                 # Application entry point
+├── .gitignore             # Git ignore file for environment and unnecessary files
+├── README.md              # Project documentation
+├── app.py                 # Main Flask application entry point
 ├── config.py              # Application configuration
 ├── requirements.txt       # Project dependencies
-└── README.md              # Project documentation
